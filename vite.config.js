@@ -4,9 +4,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-
-  base: '/YOUR-REPOSITORY-NAME/',
-
+  base: '/WordGame4K/',
   server: {
     host: '0.0.0.0',
     proxy: {
