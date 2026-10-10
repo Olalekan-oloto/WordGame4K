@@ -52,7 +52,56 @@ const Icon = ({name,size=19}) => { const map={home:House,phone:Smartphone,chat:M
 
 function App(){
  const [token,setToken]=useState(localStorage.getItem('wl-token')||'');
- const [user,setUser]=useState(null), [world,setWorld]=useState({states:{Nigeria:[],USA:[]},cities:{Nigeria:[],USA:[]}});
+ 
+useEffect(() => {
+  const fallbackWorld = {
+    states: {
+      Nigeria: [
+        'Abia', 'Adamawa', 'Akwa Ibom', 'Anambra', 'Bauchi',
+        'Bayelsa', 'Benue', 'Borno', 'Cross River', 'Delta',
+        'Ebonyi', 'Edo', 'Ekiti', 'Enugu', 'FCT',
+        'Gombe', 'Imo', 'Jigawa', 'Kaduna', 'Kano',
+        'Katsina', 'Kebbi', 'Kogi', 'Kwara', 'Lagos',
+        'Nasarawa', 'Niger', 'Ogun', 'Ondo', 'Osun',
+        'Oyo', 'Plateau', 'Rivers', 'Sokoto', 'Taraba',
+        'Yobe', 'Zamfara'
+      ],
+      USA: [
+        'Alabama', 'Alaska', 'Arizona', 'California',
+        'Florida', 'Georgia', 'Illinois', 'Maryland',
+        'Massachusetts', 'Michigan', 'New Jersey',
+        'New York', 'North Carolina', 'Ohio', 'Pennsylvania',
+        'Texas', 'Virginia', 'Washington'
+      ]
+    },
+    cities: {
+      Nigeria: [
+        'Lagos', 'Abuja', 'Kano', 'Ibadan', 'Port Harcourt',
+        'Benin City', 'Enugu', 'Abeokuta'
+      ],
+      USA: [
+        'New York City', 'Los Angeles', 'Chicago', 'Houston',
+        'Miami', 'Atlanta', 'Boston', 'Seattle', 'Dallas',
+        'Washington, D.C.'
+      ]
+    }
+  };
+
+  request('/world')
+    .then(data => {
+      if (data?.states && data?.cities) {
+        setWorld(data);
+      } else {
+        setWorld(fallbackWorld);
+      }
+    })
+    .catch(() => setWorld(fallbackWorld));
+
+  request('/market')
+    .then(data => setMarket(data.listings || []))
+    .catch(() => setMarket([]));
+}, []);
+  
  const [page,setPage]=useState('home'), [busy,setBusy]=useState(false), [error,setError]=useState(''), [notice,setNotice]=useState('');
  const [authMode,setAuthMode]=useState('register'), [form,setForm]=useState({username:'',email:'',password:'',country:'Nigeria',state:'Lagos',city:'Lagos'});
  const [messages,setMessages]=useState([]), [message,setMessage]=useState(''), [posts,setPosts]=useState([]), [postText,setPostText]=useState('');
