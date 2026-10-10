@@ -14,6 +14,41 @@ async function request(path, token, body) {
   const r = await fetch(API + path, { method: body ? 'POST':'GET', headers: { 'Content-Type':'application/json', ...(token ? {Authorization:`Bearer ${token}`}:{}) }, ...(body ? {body:JSON.stringify(body)}:{}) });
   const data = await r.json(); if (!r.ok) throw new Error(data.error || 'Request failed'); return data;
 }
+
+async function request(path, token, body) {
+  const response = await fetch(`${API}${path}`, {
+    method: body !== undefined ? 'POST' : 'GET',
+    headers: {
+      ...(body !== undefined
+        ? { 'Content-Type': 'application/json' }
+        : {}),
+      ...(token
+        ? { Authorization: `Bearer ${token}` }
+        : {})
+    },
+    ...(body !== undefined
+      ? { body: JSON.stringify(body) }
+      : {})
+  });
+
+  const contentType =
+    response.headers.get('content-type') || '';
+
+  if (!contentType.includes('application/json')) {
+    throw new Error(
+      `Unexpected server response (${response.status}). Check your backend URL and deployment.`
+    );
+  }
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Request failed');
+  }
+
+  return data;
+}
+
 const Icon = ({name,size=19}) => { const map={home:House,phone:Smartphone,chat:MessageCircle,work:BriefcaseBusiness,car:CarFront,bank:Wallet,shop:ShoppingBag,travel:Plane,social:Newspaper,people:Users,globe:Globe2,explore:Compass,building:Building2,profile:UserRound}; const C=map[name]||Sparkles; return <C size={size}/>; };
 
 function App(){
