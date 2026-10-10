@@ -27,15 +27,41 @@ function App(){
  useEffect(()=>{request('/world').then(setWorld).catch(()=>{});request('/market').then(d=>setMarket(d.listings)).catch(()=>{});},[]);
  useEffect(()=>{if(token) request('/me',token).then(d=>setUser(d.user)).catch(()=>{localStorage.removeItem('wl-token');setToken('');setUser(null);});},[token]);
  useEffect(()=>{if(!token)return;request('/messages',token).then(d=>setMessages(d.messages)).catch(()=>{});request('/feed',token).then(d=>setPosts(d.posts)).catch(()=>{});const socket=io({transports:['websocket','polling'],auth:{token}});socket.on('chat:message',m=>setMessages(prev=>prev.some(x=>x.id===m.id)?prev:[...prev,m].slice(-100)));return()=>socket.disconnect();},[token]);
- const call=async fn=>{setBusy(true);setError('');setNotice('');try{await fn()}catch(e){setError(e.message)}finally{setBusy(false)}};
- const sign=()=>call(async()=>{const path=authMode==='register'?'/register':'/login';const payload=authMode==='register'?form:{email:form.email,password:form.password};const d=await request(path,'',payload);localStorage.setItem('wl-token',d.token);setToken(d.token);setUser(d.user);setNotice('Welcome to your new life.');});
- const updateUser=async d=>{if(d.user)setUser(d.user);};
- const sendMessage=()=>call(async()=>{const d=await request('/messages',token,{text:message});setMessages(p=>p.some(x=>x.id===d.message.id)?p:[...p,d.message]);setMessage('');});
- const publish=()=>call(async()=>{const d=await request('/feed',token,{text:postText});setPosts(p=>[d.post,...p]);setPostText('');});
- const work=()=>call(async()=>{const d=await request('/work',token,{job});setUser(d.user);setNotice(`Shift complete! You earned ${money(d.earned,user.country)} in game.`);});
- const bank=action=>call(async()=>{const d=await request('/bank',token,{action,amount});setUser(d.user);setNotice('Your in-game banking transaction is complete.');});
- const buy=item=>call(async()=>{const d=await request('/buy',token,{item});setUser(d.user);setNotice(`${item} purchased successfully.`);});
- const travel=()=>call(async()=>{const d=await request('/travel/quote',token,{destination:travelTo});setNotice(`${d.destination} trip: $${d.priceUSD} USD. ${d.message}`);});
+
+async function request(path, token, body) {
+  const response = await fetch(`${API}${path}`, {
+    method: body !== undefined ? 'POST' : 'GET',
+    headers: {
+      ...(body !== undefined
+        ? { 'Content-Type': 'application/json' }
+        : {}),
+      ...(token
+        ? { Authorization: `Bearer ${token}` }
+        : {})
+    },
+    ...(body !== undefined
+      ? { body: JSON.stringify(body) }
+      : {})
+  });
+
+  const contentType =
+    response.headers.get('content-type') || '';
+
+  if (!contentType.includes('application/json')) {
+    throw new Error(
+      `Unexpected server response (${response.status}). Check your backend URL and deployment.`
+    );
+  }
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Request failed');
+  }
+
+  return data;
+}
+  
  const nav=[['home','Home'],['phone','World Phone'],['chat','Messages'],['social','Social Feed'],['work','Jobs & Career'],['building','Property'],['car','Vehicles'],['bank','Banking'],['shop','Marketplace'],['travel','Travel'],['people','Community']];
  const activeLabel=nav.find(n=>n[0]===page)?.[1]||'Home';
  if(!user)return <div className="authShell"><div className="authVisual"><div className="brand"><Globe2/> WORLD LIFE <b>4K</b></div><div className="heroCopy"><span className="eyebrow">TWO COUNTRIES. ONE WORLD.</span><h1>Your story.<br/><em>Your rules.</em></h1><p>Build a career, find a home, meet people and create your own life across Nigeria and the United States.</p><div className="authPills"><span>🇳🇬 Nigeria</span><span>🇺🇸 United States</span><span><Gamepad2 size={15}/> Life simulation</span></div></div><div className="visualFooter">A new world is waiting for you.</div></div><div className="authPanel"><div className="authCard"><div className="mobileBrand brand"><Globe2/> WORLD LIFE <b>4K</b></div><span className="eyebrow">{authMode==='register'?'START YOUR JOURNEY':'WELCOME BACK'}</span><h2>{authMode==='register'?'Create your character':'Sign in to your world'}</h2><p className="muted">Your world is yours to build.</p><form onSubmit={e=>{e.preventDefault();sign()}}>{authMode==='register'&&<label>Player name<input required maxLength="24" placeholder="Choose a username" value={form.username} onChange={e=>setForm({...form,username:e.target.value})}/></label>}<label>Email address<input type="email" required placeholder="you@example.com" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label><label>Password<input type="password" required minLength={authMode==='register'?8:1} placeholder={authMode==='register'?'At least 8 characters':'Your password'} value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></label>{authMode==='register'&&<><label>Starting country<select value={form.country} onChange={e=>{const c=e.target.value;setForm({...form,country:c,state:world.states[c]?.[0]||'',city:world.cities[c]?.[0]||''})}}><option>Nigeria</option><option>USA</option></select></label><div className="formRow"><label>State / territory<select value={form.state} onChange={e=>setForm({...form,state:e.target.value})}>{(world.states[form.country]||[]).map(s=><option key={s}>{s}</option>)}</select></label><label>Starting city<select value={form.city} onChange={e=>setForm({...form,city:e.target.value})}>{(world.cities[form.country]||[]).map(c=><option key={c}>{c}</option>)}</select></label></div></>}<button className="primary full" disabled={busy}>{busy?'Please wait…':authMode==='register'?'Create account':'Sign in'} <ChevronRight size={18}/></button></form>{error&&<div className="alert error">{error}</div>}<p className="switchAuth">{authMode==='register'?'Already have an account?':'New to World Life?'} <button onClick={()=>{setAuthMode(authMode==='register'?'login':'register');setError('')}}>{authMode==='register'?'Sign in':'Create account'}</button></p><div className="security"><ShieldCheck size={16}/> Your password is securely hashed on the server.</div></div></div></div>;
