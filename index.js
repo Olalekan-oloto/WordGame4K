@@ -93,6 +93,7 @@ fs.renameSync(tmp, dbPath);
 
 const sessions = new Map(readDB().sessions.map(s => [s.token, s.userId]));
 const onlineSockets = new Map();
+const worldPositions = new Map();
 
 app.use(express.json({ limit: '32kb' }));
 
@@ -588,7 +589,28 @@ players: [
 ]
 });
 
-socket.on('world:ping', () => {
+socket.on('world:position', position => {
+    if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.z)) return;
+    const player = socket.data.player.player;
+    worldPositions.set(player.id, {
+      id: player.id, username: player.username, country: player.country,
+      city: player.city, x: Math.max(-40, Math.min(40, position.x)),
+      z: Math.max(-78, Math.min(78, position.z)),
+      yaw: Number.isFinite(position.yaw) ? position.yaw : 0,
+      updatedAt: Date.now()
+    });
+    // Broadcast only to players in the same country/city; regional isolation is enforced here.
+    const room = `${player.country}:${player.city}`;
+    socket.join(room);
+    io.to(room).emit('world:positions', {
+      players: [...worldPositions.values()].filter(p =>
+        p.country === player.country && p.city === player.city &&
+        Date.now() - p.updatedAt < 10000
+      )
+    });
+  });
+
+  socket.on('world:ping', () => {
 socket.emit('world:pong', Date.now());
 });
 
@@ -623,5 +645,5 @@ if (err) next(err);
 }
 
 server.listen(PORT, '0.0.0.0', () => {
-console.log("WORLD LIFE 4K listening on port ${PORT}");
+console.log(`WORLD LIFE 4K listening on port ${PORT}`);
 });
