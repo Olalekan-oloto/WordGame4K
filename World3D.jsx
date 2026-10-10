@@ -220,7 +220,7 @@ export default function World3D({ username = 'Player', city = 'Lagos', country =
       let driving = false, vehicleSpeed = 0, walkPhase = 0;
       let multiplayer = null; const remotePlayers = new Map();
       if (token) {
-        multiplayer = io((import.meta.env.VITE_API_URL || '').trim().replace(/\\/+$/, '') || undefined, { transports: ['websocket','polling'], auth: { token } });
+        multiplayer = io((import.meta.env.VITE_API_URL || '').trim().replace(/\/+$/, '') || undefined, { transports: ['websocket','polling'], auth: { token } });
         multiplayer.on('world:positions', payload => {
           const live = new Set();
           for (const p of (payload.players || [])) {
