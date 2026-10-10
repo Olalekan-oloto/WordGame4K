@@ -4,7 +4,8 @@ import { io } from 'socket.io-client';
 import { Globe2, MapPin, Smartphone, MessageCircle, BriefcaseBusiness, House, CarFront, Wallet, ShoppingBag, Plane, Users, Newspaper, LogOut, Menu, X, Send, ArrowDownToLine, ArrowUpFromLine, Sparkles, ShieldCheck, Gamepad2, Building2, Compass, Heart, Bell, Search, ChevronRight, CreditCard, UserRound, CircleDollarSign } from 'lucide-react';
 import './styles.css';
 
-const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\\/+$/, '');
+
+const API_BASE = import.meta.env.VITE_API_URL || '';
 const API = `${API_BASE}/api`;
 
 const money = (n, country) =>
