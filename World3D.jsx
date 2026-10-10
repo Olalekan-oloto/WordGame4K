@@ -19,7 +19,7 @@ export default function World3D({ username = 'Player', city = 'Lagos', country =
       scene.fog = new THREE.Fog(skyColor, 58, 155);
       const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 250);
       renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -27,13 +27,26 @@ export default function World3D({ username = 'Player', city = 'Lagos', country =
       renderer.toneMappingExposure = 1.05;
       host.appendChild(renderer.domElement);
 
-      scene.add(new THREE.HemisphereLight(0xe8f6ff, 0x64744d, 2.1));
-      const sun = new THREE.DirectionalLight(0xfff1d3, 2.2);
-      sun.position.set(-20, 35, 12); scene.add(sun);
+      scene.add(new THREE.HemisphereLight(0xe8f6ff, 0x4b5540, 1.75));
+      const sun = new THREE.DirectionalLight(0xffe4b5, 3.0);
+      sun.position.set(-24, 38, 16);
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(1024, 1024);
+      sun.shadow.camera.left = -48; sun.shadow.camera.right = 48;
+      sun.shadow.camera.top = 55; sun.shadow.camera.bottom = -55;
+      sun.shadow.bias = -0.00025;
+      scene.add(sun);
 
-      const mat = (color, roughness = 1) => new THREE.MeshStandardMaterial({ color, roughness });
+      const mat = (color, roughness = 1, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness, ...extra });
+      // Procedural road grain and fine lane wear: no external assets or network required.
+      const roadCanvas = document.createElement('canvas'); roadCanvas.width = 256; roadCanvas.height = 256;
+      const roadCtx = roadCanvas.getContext('2d'); roadCtx.fillStyle = '#343a3e'; roadCtx.fillRect(0,0,256,256);
+      let seed = country === 'Nigeria' ? 241 : 719;
+      const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+      for (let i=0;i<2600;i++) { const v=rand(); roadCtx.fillStyle = v>.5 ? 'rgba(220,220,210,.075)' : 'rgba(0,0,0,.12)'; roadCtx.fillRect(rand()*256,rand()*256,1+rand()*2,1+rand()*2); }
+      const roadTexture = new THREE.CanvasTexture(roadCanvas); roadTexture.wrapS = roadTexture.wrapT = THREE.RepeatWrapping; roadTexture.repeat.set(2,18); roadTexture.colorSpace = THREE.SRGBColorSpace;
       const grass = mat(country === 'Nigeria' ? '#78945c' : '#688b59');
-      const road = mat('#303941', 0.95);
+      const road = new THREE.MeshStandardMaterial({ map: roadTexture, color: '#777f83', roughness: 0.94 });
       const pavement = mat(country === 'Nigeria' ? '#b9ad95' : '#c4c7c7');
       const white = mat('#f5f0df');
       const dark = mat('#273541');
@@ -86,7 +99,29 @@ export default function World3D({ username = 'Player', city = 'Lagos', country =
             for (let wx = -width / 2 + 0.8; wx < width / 2; wx += 1.35) {
               const windowMesh = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.62, 0.06), mat(country === 'Nigeria' ? '#5c8790' : '#557b9b', 0.28));
               windowMesh.position.set(x + wx, wy, z + (side < 0 ? 3.54 : -3.54)); world.add(windowMesh);
+              const frame = new THREE.Mesh(new THREE.BoxGeometry(0.64,0.71,0.045), mat(country === 'Nigeria' ? '#d6c3a2' : '#d9e0e5',0.8));
+              frame.position.set(x + wx, wy, z + (side < 0 ? 3.50 : -3.50)); world.add(frame);
+              windowMesh.position.z += side < 0 ? 0.035 : -0.035;
             }
+          }
+          // Facade ledges, balconies and air-conditioning units add layered architectural detail.
+          for (let fy=3.2; fy<height; fy+=3.2) {
+            const ledge = new THREE.Mesh(new THREE.BoxGeometry(width+0.18,0.12,7.16),mat('#b9b6ad',0.9));
+            ledge.position.set(x,fy,z); world.add(ledge);
+            if ((row + (side > 0 ? 1 : 0)) % 3 === 0) {
+              const balcony = new THREE.Mesh(new THREE.BoxGeometry(width * 0.72,0.12,0.72),mat(country === 'Nigeria' ? '#a99a83' : '#aab5bf',0.8));
+              balcony.position.set(x,fy+0.48,z+(side<0?3.8:-3.8)); world.add(balcony);
+              const rail = new THREE.Mesh(new THREE.BoxGeometry(width * 0.72,0.38,0.07),mat('#46545a',0.65,{metalness:0.25}));
+              rail.position.set(x,fy+0.72,z+(side<0?4.12:-4.12)); world.add(rail);
+            }
+          }
+          for (let acy=2.4; acy<height-0.5; acy+=3.8) {
+            const ac = new THREE.Mesh(new THREE.BoxGeometry(0.52,0.38,0.32),mat('#c7c9c6',0.78,{metalness:0.15}));
+            ac.position.set(x+width*0.32,acy,z+(side<0?3.62:-3.62)); world.add(ac);
+          }
+          if (row % 2 === 0) {
+            const sign = new THREE.Mesh(new THREE.BoxGeometry(Math.min(width*0.78,4.1),0.55,0.14),mat(country === 'Nigeria' ? '#176d4b' : '#263e5b'));
+            sign.position.set(x,2.25,z+(side<0?3.64:-3.64)); world.add(sign);
           }
         }
       }
@@ -120,8 +155,32 @@ export default function World3D({ username = 'Player', city = 'Lagos', country =
         const x = side * 11.2;
         const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.25, 1.5, 6), mat('#79553a'));
         trunk.position.set(x, 0.7, z); world.add(trunk);
-        const leaves = new THREE.Mesh(new THREE.SphereGeometry(1.05, 10, 8), mat('#43834d'));
-        leaves.position.set(x, 1.95, z); world.add(leaves);
+        const leafMat = mat(country === 'Nigeria' ? '#3d7842' : '#47794b',0.96);
+        const leaves = new THREE.Mesh(new THREE.SphereGeometry(1.12, 10, 8), leafMat);
+        leaves.scale.set(1.12,1.0,1.0); leaves.position.set(x, 2.05, z); world.add(leaves);
+        for (const [ox,oy,oz,s] of [[-0.48,0.35,0.12,0.72],[0.46,0.28,-0.12,0.78],[0,0.72,0,0.68]]) {
+          const crown = new THREE.Mesh(new THREE.SphereGeometry(s,8,7),leafMat);
+          crown.position.set(x+ox,2.0+oy,z+oz); world.add(crown);
+        }
+      }
+      // Street furniture, overhead wires, lamps and roadside details.
+      for (let z=-60; z<=60; z+=20) for (const side of [-1,1]) {
+        const lamp = new THREE.Group();
+        const poleMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.075,0.11,4.4,8),mat('#4c5658',0.7));
+        poleMesh.position.y=2.2; lamp.add(poleMesh);
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.9,0.08,0.08),mat('#4c5658',0.7)); arm.position.set(side<0?0.38:-0.38,4.25,0); lamp.add(arm);
+        const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.34,0.12,0.22),mat('#f4e5b5',0.35,{emissive:'#5b5030',emissiveIntensity:0.35}));
+        bulb.position.set(side<0?0.75:-0.75,4.18,0); lamp.add(bulb);
+        lamp.position.set(side*12.8,0,z); world.add(lamp);
+      }
+      // Roadside drain covers, painted kerb breaks and small utility cabinets.
+      for (let z=-62; z<70; z+=8) {
+        const drain = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.025,1.15),mat('#555c5d',0.95));
+        drain.position.set(-7.7,0.035,z); world.add(drain);
+        if (z%16===-14 || z%16===2) {
+          const cabinet = new THREE.Mesh(new THREE.BoxGeometry(0.62,1.1,0.55),mat('#77817b',0.85));
+          cabinet.position.set(10.6,0.55,z+2); world.add(cabinet);
+        }
       }
       // Raised crosswalk bars near the intersection.
       for (let i = 0; i < 7; i++) {
@@ -151,11 +210,19 @@ export default function World3D({ username = 'Player', city = 'Lagos', country =
         const bus = new THREE.Group(); driveVehicle = bus;
         makeBox(2.35, 1.5, 4.2, '#e6bd23', 0, 1.05, 0, bus);
         makeBox(2.38, 0.3, 4.22, '#208b4b', 0, 0.55, 0, bus);
-        makeBox(2.0, 0.52, 0.08, '#75b7ca', 0, 1.45, 2.12, bus);
-        makeBox(2.0, 0.52, 0.08, '#75b7ca', 0, 1.45, -2.12, bus);
+        makeBox(1.88, 0.72, 2.35, '#e6bd23', 0, 1.72, -0.15, bus);
+        makeBox(1.98, 0.52, 0.08, '#72a9ba', 0, 1.52, 2.12, bus);
+        makeBox(1.98, 0.52, 0.08, '#72a9ba', 0, 1.52, -2.12, bus);
+        for (const side of [-1,1]) for (const z of [-0.65,0.62]) makeBox(0.06,0.46,0.82,'#6a9eac',side*1.19,1.47,z,bus);
+        makeBox(1.1,0.3,0.08,'#202a2e',0,0.72,2.13,bus);
+        for (const x of [-0.82,0.82]) makeBox(0.36,0.2,0.08,'#fff2c6',x,1.12,2.14,bus);
+        makeBox(0.4,0.22,0.08,'#e94c3e',-0.75,1.08,-2.14,bus);
+        makeBox(0.4,0.22,0.08,'#e94c3e',0.75,1.08,-2.14,bus);
         for (const x of [-1.15, 1.15]) for (const z of [-1.35, 1.35]) {
           const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.18, 10), mat('#20272b'));
           wheel.rotation.z = Math.PI / 2; wheel.position.set(x, 0.36, z); bus.add(wheel);
+          const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.15,0.195,12),mat('#a9b0b2',0.45));
+          hub.rotation.z=Math.PI/2; hub.position.set(x*1.015,0.36,z); bus.add(hub);
         }
         bus.position.set(3.8, 0, -3); bus.rotation.y = Math.PI / 2; world.add(bus);
       } else {
@@ -164,7 +231,14 @@ export default function World3D({ username = 'Player', city = 'Lagos', country =
         makeBox(0.08, 0.65, 0.78, '#254a87', -4.55, 4.55, -5.65);
         const taxi = new THREE.Group(); driveVehicle = taxi;
         makeBox(2.25, 1.05, 4.0, '#f2c52f', 0, 0.85, 0, taxi);
-        makeBox(1.65, 0.68, 1.75, '#78a8bd', 0, 1.55, -0.15, taxi);
+        makeBox(1.75, 0.78, 2.0, '#78a8bd', 0, 1.48, -0.12, taxi);
+        makeBox(1.86,0.08,2.18,'#d9e0df',0,1.9,-0.12,taxi);
+        makeBox(1.1,0.08,0.12,'#f7f1dd',0,1.48,2.02,taxi);
+        for (const x of [-0.82,0.82]) {
+          makeBox(0.32,0.18,0.08,'#fff4c9',x,0.93,2.03,taxi);
+          makeBox(0.28,0.18,0.08,'#e84a42',x,0.8,-2.02,taxi);
+        }
+        makeBox(0.62,0.16,0.34,'#fff0b4',0,1.45,0.3,taxi);
         makeBox(0.9, 0.14, 0.45, '#fff5c6', 0, 1.45, 1.8, taxi);
         for (const x of [-1.1, 1.1]) for (const z of [-1.25, 1.25]) {
           const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.18, 10), mat('#20272b'));
@@ -179,7 +253,23 @@ export default function World3D({ username = 'Player', city = 'Lagos', country =
         hydrant.position.set(5.5, 0, 8); world.add(hydrant);
       }
 
-      // Player character: simple stylized body and head.
+      // Small vehicle details catch the light and make the cars read less like plain blocks.
+      if (driveVehicle) {
+        const isBus = country === 'Nigeria';
+        const sideTrim = mat(isBus ? '#176b42' : '#c9a222',0.52,{metalness:0.22});
+        for (const side of [-1,1]) {
+          const trim = new THREE.Mesh(new THREE.BoxGeometry(0.055,0.12,isBus?3.1:2.8),sideTrim);
+          trim.position.set(side*(isBus?1.205:1.14),isBus?0.82:0.9,0); driveVehicle.add(trim);
+          const mirrorStem = new THREE.Mesh(new THREE.BoxGeometry(0.09,0.08,0.28),mat('#252c30',0.42,{metalness:0.35}));
+          mirrorStem.position.set(side*(isBus?1.25:1.18),1.42,1.35); driveVehicle.add(mirrorStem);
+          const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.16,0.18,0.12),mat('#20282d',0.3,{metalness:0.4}));
+          mirror.position.set(side*(isBus?1.32:1.25),1.46,1.42); driveVehicle.add(mirror);
+        }
+        const bumper = new THREE.Mesh(new THREE.BoxGeometry(isBus?2.18:2.12,0.16,0.16),mat('#41484b',0.55,{metalness:0.28}));
+        bumper.position.set(0,0.46,2.15); driveVehicle.add(bumper);
+      }
+
+      // Player character: stylized third-person avatar with layered clothing and shoes.
       const player = new THREE.Group();
       const shirt = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 0.65, 4, 8), mat('#19b7a1'));
       shirt.position.y = 1.12; player.add(shirt);
@@ -205,13 +295,27 @@ export default function World3D({ username = 'Player', city = 'Lagos', country =
         if (obj.isMesh) { obj.castShadow = true; obj.receiveShadow = true; }
       });
       const keys = new Set();
+      const touchDown = e => keys.add(String(e.detail || '').toLowerCase());
+      const touchUp = e => keys.delete(String(e.detail || '').toLowerCase());
+      window.addEventListener('wl4k-control-down', touchDown);
+      window.addEventListener('wl4k-control-up', touchUp);
       let yaw = 0;
       const onKeyDown = e => { if (['w','a','s','d','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) { keys.add(e.key.toLowerCase()); } };
       const onKeyUp = e => keys.delete(e.key.toLowerCase());
       window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp);
+      // Never leave a movement key stuck if the player switches apps or the browser loses focus.
+      const clearControls = () => keys.clear();
+      window.addEventListener('blur', clearControls);
+      document.addEventListener('visibilitychange', clearControls);
       let dragging = false, lastX = 0;
-      const down = e => { dragging = true; lastX = e.clientX; renderer.domElement.setPointerCapture?.(e.pointerId); };
-      const move = e => { if (dragging) { yaw -= (e.clientX - lastX) * 0.005; lastX = e.clientX; } };
+      const down = e => {
+        // Mouse, pen and finger drags all rotate the camera on desktop and mobile.
+        dragging = true; lastX = e.clientX;
+        renderer.domElement.setPointerCapture?.(e.pointerId);
+      };
+      const move = e => {
+        if (dragging) { yaw -= (e.clientX - lastX) * 0.005; lastX = e.clientX; }
+      };
       const up = () => { dragging = false; };
       renderer.domElement.addEventListener('pointerdown', down);
       renderer.domElement.addEventListener('pointermove', move);
@@ -220,7 +324,7 @@ export default function World3D({ username = 'Player', city = 'Lagos', country =
       let driving = false, vehicleSpeed = 0, walkPhase = 0;
       let multiplayer = null; const remotePlayers = new Map();
       if (token) {
-        multiplayer = io((import.meta.env.VITE_API_URL || '').trim().replace(/\/+$/, '') || undefined, { transports: ['websocket','polling'], auth: { token } });
+        multiplayer = io((import.meta.env.VITE_API_URL || '').trim().replace(/\\/+$/, '') || undefined, { transports: ['websocket','polling'], auth: { token } });
         multiplayer.on('world:positions', payload => {
           const live = new Set();
           for (const p of (payload.players || [])) {
@@ -299,7 +403,7 @@ export default function World3D({ username = 'Player', city = 'Lagos', country =
       frame = requestAnimationFrame(animate);
       return () => {
         active = false; cancelAnimationFrame(frame); observer.disconnect();
-        window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('keydown', onDriveKey); multiplayer?.disconnect();
+        window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', clearControls); document.removeEventListener('visibilitychange', clearControls); window.removeEventListener('keydown', onDriveKey); window.removeEventListener('wl4k-control-down', touchDown); window.removeEventListener('wl4k-control-up', touchUp); multiplayer?.disconnect();
         renderer.domElement.removeEventListener('pointerdown', down); renderer.domElement.removeEventListener('pointermove', move);
         renderer.domElement.removeEventListener('pointerup', up); renderer.domElement.removeEventListener('pointercancel', up);
         scene.traverse(obj => { obj.geometry?.dispose?.(); if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose()); else obj.material?.dispose?.(); });
@@ -313,11 +417,18 @@ export default function World3D({ username = 'Player', city = 'Lagos', country =
   }, []);
 
   return <div className="world3d-page">
-    <div className="world3d-heading"><div><span className="eyebrow">3D OPEN-WORLD STYLE · EARLY PROTOTYPE</span><h1>Explore <em>{city}</em></h1><p>{country === 'Nigeria' ? '🇳🇬 Nigeria world · local market stalls, danfo minibus and warm Lagos-style streets.' : '🇺🇸 USA world · taller city blocks, a yellow taxi and American street details.'} Walk with WASD/arrows; press E near the street vehicle to drive/exit; drag to look around.</p></div><div className="world3d-coords"><small>POSITION</small><b>{position.x}, {position.z}</b></div></div>
+    <div className="world3d-heading"><div><span className="eyebrow">3D OPEN-WORLD STYLE · EARLY PROTOTYPE</span><h1>Explore <em>{city}</em></h1><p>{country === 'Nigeria' ? '🇳🇬 Nigeria world · local market stalls, danfo minibus and warm Lagos-style streets.' : '🇺🇸 USA world · taller city blocks, a yellow taxi and American street details.'} Use WASD/arrows or the on-screen pad; press E or DRIVE to enter/exit a vehicle; drag to look around.</p></div><div className="world3d-coords"><small>POSITION</small><b>{position.x}, {position.z}</b></div></div>
     <div className="world3d-stage" ref={hostRef}>
       <div className="world3d-hud"><span className="world3d-live"><i/> WORLD LIFE 4K</span><span>{username}</span></div>
+      <div className="world3d-touch" aria-label="Touch game controls">
+        <div className="world3d-pad">
+          <button aria-label="Move forward" onPointerDown={e=>{e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);window.dispatchEvent(new CustomEvent('wl4k-control-down',{detail:'w'}));}} onPointerUp={()=>window.dispatchEvent(new CustomEvent('wl4k-control-up',{detail:'w'}))} onPointerCancel={()=>window.dispatchEvent(new CustomEvent('wl4k-control-up',{detail:'w'}))} onLostPointerCapture={()=>window.dispatchEvent(new CustomEvent('wl4k-control-up',{detail:'w'}))}>▲</button>
+          <div><button aria-label="Move left" onPointerDown={e=>{e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);window.dispatchEvent(new CustomEvent('wl4k-control-down',{detail:'a'}));}} onPointerUp={()=>window.dispatchEvent(new CustomEvent('wl4k-control-up',{detail:'a'}))} onPointerCancel={()=>window.dispatchEvent(new CustomEvent('wl4k-control-up',{detail:'a'}))} onLostPointerCapture={()=>window.dispatchEvent(new CustomEvent('wl4k-control-up',{detail:'a'}))}>◀</button><button aria-label="Move backward" onPointerDown={e=>{e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);window.dispatchEvent(new CustomEvent('wl4k-control-down',{detail:'s'}));}} onPointerUp={()=>window.dispatchEvent(new CustomEvent('wl4k-control-up',{detail:'s'}))} onPointerCancel={()=>window.dispatchEvent(new CustomEvent('wl4k-control-up',{detail:'s'}))} onLostPointerCapture={()=>window.dispatchEvent(new CustomEvent('wl4k-control-up',{detail:'s'}))}>▼</button><button aria-label="Move right" onPointerDown={e=>{e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);window.dispatchEvent(new CustomEvent('wl4k-control-down',{detail:'d'}));}} onPointerUp={()=>window.dispatchEvent(new CustomEvent('wl4k-control-up',{detail:'d'}))} onPointerCancel={()=>window.dispatchEvent(new CustomEvent('wl4k-control-up',{detail:'d'}))} onLostPointerCapture={()=>window.dispatchEvent(new CustomEvent('wl4k-control-up',{detail:'d'}))}>▶</button></div>
+        </div>
+        <button className="world3d-drive" onClick={()=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'e'}))}>DRIVE / EXIT</button>
+      </div>
       {helpOpen && <div className="world3d-help"><button aria-label="Close controls" onClick={() => setHelpOpen(false)}>×</button><b>How to play</b><p><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or arrows to move.</p><p><kbd>E</kbd> to enter/exit the street vehicle; use arrows to steer.</p><p>Drag the scene to turn the camera.</p><small>Prototype multiplayer requires a reachable backend and matching country region.</small></div>}
     </div>
-    <div className="world3d-note"><span>🕹️</span><div><b>Next game systems</b><p>Next: larger explorable districts, drivable vehicles, missions, character customization and synchronized multiplayer. This is a stylized low-poly 3D prototype, not GTA-level graphics yet.</p></div></div>
+    <div className="world3d-note"><span>🕹️</span><div><b>Next game systems</b><p>Next: larger explorable districts, drivable vehicles, missions, character customization and synchronized multiplayer. Enhanced browser 3D prototype with textured roads, detailed street props and touch controls. It is not a AAA photorealistic game.</p></div></div>
   </div>;
 }
