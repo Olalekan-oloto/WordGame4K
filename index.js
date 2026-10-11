@@ -324,7 +324,21 @@ res.status(500).json({ error: 'Login failed. Please try again.' });
 });
 
 app.get('/api/me', auth, (req, res) => {
-res.json({ user: publicUser(req.user) });
+  // Needs decline with elapsed play time (capped to avoid huge offline penalties).
+  const db = readDB();
+  const user = db.users.find(u => u.id === req.user.id);
+  if (!user) return res.status(404).json({ error: 'Player profile not found.' });
+  user.needs ||= { hunger: 100, energy: 100, fun: 100, hygiene: 100, social: 100, bathroom: 100 };
+  const now = Date.now();
+  const previous = Number(user.needsUpdatedAt || now);
+  const elapsedMinutes = Math.max(0, Math.min(180, Math.floor((now - previous) / 60000)));
+  if (elapsedMinutes > 0) {
+    const decay = { hunger: 1.2, energy: 0.8, fun: 0.5, hygiene: 0.45, social: 0.35, bathroom: 0.7 };
+    for (const [need, rate] of Object.entries(decay)) user.needs[need] = Math.max(0, Number(user.needs[need] ?? 100) - elapsedMinutes * rate);
+    user.needsUpdatedAt = now;
+    writeDB(db);
+  }
+  res.json({ user: publicUser(user) });
 });
 
 app.post('/api/logout', auth, (req, res) => {
@@ -430,11 +444,13 @@ app.post('/api/needs', auth, (req, res) => {
   const u = db.users.find(x => x.id === req.user.id);
   if (!u) return res.status(404).json({ error: 'Player profile not found.' });
   u.needs ||= { hunger: 100, energy: 100, fun: 100, hygiene: 100, social: 100, bathroom: 100 };
-  if (u.cash < action.cost) return res.status(400).json({ error: 'Not enough in-game money for this activity.' });
-  u.cash -= action.cost;
+  const activityCost = u.country === 'USA' ? Math.round(action.cost / 100) : action.cost;
+  if (u.cash < activityCost) return res.status(400).json({ error: 'Not enough in-game money for this activity.' });
+  u.cash -= activityCost;
+  u.needsUpdatedAt = Date.now();
   u.needs[action.need] = Math.min(100, (Number(u.needs[action.need]) || 0) + action.amount);
   writeDB(db);
-  res.json({ user: publicUser(u), action: req.body.action });
+  res.json({ user: publicUser(u), action: req.body.action, cost: activityCost });
 });
 
 app.post('/api/house/upgrade', auth, (req, res) => {
@@ -454,7 +470,7 @@ app.post('/api/house/upgrade', auth, (req, res) => {
   u.houseUpgrades ||= { bed: 1, kitchen: 1, bathroom: 1, entertainment: 0, decor: 0 };
   const current = Number(u.houseUpgrades[key]) || 0;
   if (level !== current + 1) return res.status(400).json({ error: 'Upgrade one level at a time.' });
-  const cost = upgradeCosts[key][level - 1].cost;
+  const cost = u.country === 'USA' ? Math.round(upgradeCosts[key][level - 1].cost / 100) : upgradeCosts[key][level - 1].cost;
   if (u.cash < cost) return res.status(400).json({ error: 'Not enough in-game money for this upgrade.' });
   u.cash -= cost;
   u.houseUpgrades[key] = level;
