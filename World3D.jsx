@@ -192,6 +192,17 @@ export default function World3D({ username = 'Player', city = 'Lagos', country =
         const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color));
         mesh.position.set(x, y, z); parent.add(mesh); return mesh;
       };
+      // Textured signboards for recognizable Lagos street commerce.
+      const makeShopSign = (label, x, y, z, color = '#176746', width = 2.6) => {
+        const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 128;
+        const ctx = canvas.getContext('2d'); ctx.fillStyle = '#f7eed6'; ctx.fillRect(0,0,512,128);
+        ctx.fillStyle = color; ctx.fillRect(7,7,498,114); ctx.fillStyle = '#fff7df';
+        ctx.font = 'bold 42px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(label,256,64,475);
+        const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+        const board = new THREE.Mesh(new THREE.PlaneGeometry(width,width*0.25),new THREE.MeshStandardMaterial({map:texture,roughness:0.85}));
+        board.position.set(x,y,z); world.add(board); return board;
+      };
       // A simple flag pole and a deliberately low-poly country flag.
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 5.5, 6), mat('#d5d9dd'));
       pole.position.set(-5.3, 2.75, -5); world.add(pole);
@@ -207,6 +218,42 @@ export default function World3D({ username = 'Player', city = 'Lagos', country =
           makeBox(0.5, 0.7, 0.08, '#4b8190', x - 0.55, 1.05, z + 0.94);
           makeBox(0.5, 0.7, 0.08, '#4b8190', x + 0.55, 1.05, z + 0.94);
         }
+        makeShopSign('EKO MARKET',-4.7,2.22,20.0,'#176746',2.5);
+        makeShopSign('POS • AIRTIME',-1.5,2.22,22.2,'#b64a2f',2.5);
+        makeShopSign('MAMA PUT',1.7,2.22,24.4,'#a66a18',2.5);
+        // More roadside kiosks with painted awnings along the market street.
+        for (let i=0;i<5;i++) {
+          const x=i%2===0?-10.7:10.7, z=-26+i*11.5;
+          makeBox(2.0,1.65,1.5,['#d0a05e','#9e6844','#c77a43'][i%3],x,0.83,z);
+          makeBox(2.35,0.22,1.8,['#e3b72e','#247b4d','#d94e3f'][i%3],x,1.75,z);
+          makeBox(0.58,0.7,0.08,'#39798b',x-0.48,1.0,z+0.78);
+          makeBox(0.58,0.7,0.08,'#39798b',x+0.48,1.0,z+0.78);
+        }
+        // Keke Napep tricycle parked beside the curb.
+        const keke=new THREE.Group();
+        makeBox(1.45,0.7,1.8,'#e7c52a',0,0.82,0,keke);
+        makeBox(1.38,0.12,1.72,'#176f42',0,1.2,0,keke);
+        makeBox(1.3,0.08,1.55,'#e7c52a',0,1.9,-0.05,keke);
+        for(const x of [-0.62,0.62]) for(const zz of [-0.7,0.65]) makeBox(0.07,0.68,0.07,'#26363a',x,1.54,zz,keke);
+        makeBox(1.0,0.48,0.045,'#8db8c2',0,1.52,0.82,keke);
+        for(const [x,zz] of [[-0.72,-0.55],[0.72,-0.55],[0,0.66]]) { const wh=new THREE.Mesh(new THREE.CylinderGeometry(0.27,0.27,0.15,12),mat('#202528')); wh.rotation.z=Math.PI/2; wh.position.set(x,0.28,zz); keke.add(wh); }
+        keke.position.set(5.7,0,13); keke.rotation.y=-0.15; world.add(keke);
+        // Okada motorcycle: frame, saddle, handlebars and rubber wheels.
+        const bike=new THREE.Group();
+        for(const zz of [-0.72,0.72]) { const wh=new THREE.Mesh(new THREE.TorusGeometry(0.28,0.075,8,14),mat('#202326',0.95)); wh.rotation.y=Math.PI/2; wh.position.set(0,0.31,zz); bike.add(wh); }
+        makeBox(0.14,0.38,0.58,'#d8a52a',0,0.62,0,bike); makeBox(0.52,0.12,0.32,'#1c2528',0,0.9,-0.08,bike);
+        makeBox(0.12,0.44,0.12,'#2a3032',0,0.65,0.55,bike); makeBox(0.62,0.06,0.08,'#31383a',0,0.85,0.78,bike);
+        bike.position.set(-5.6,0,11); bike.rotation.y=0.2; world.add(bike);
+        // Power poles and overhead cables, a familiar detail on Lagos streets.
+        for(const x of [-12.2,12.2]) for(let z=-50;z<=55;z+=26) {
+          const poleMesh=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.13,6.2,7),mat('#665e50')); poleMesh.position.set(x,3.1,z); world.add(poleMesh);
+          const arm=new THREE.Mesh(new THREE.BoxGeometry(1.25,0.1,0.12),mat('#665e50')); arm.position.set(x,5.7,z); world.add(arm);
+        }
+        const cableMat=new THREE.LineBasicMaterial({color:'#333a3b',transparent:true,opacity:0.72});
+        for(let z=-50;z<55;z+=26) { const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(-12.2,5.7,z),new THREE.Vector3(0,5.15,z+3),new THREE.Vector3(12.2,5.7,z)]); world.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(24)),cableMat)); }
+        // Stationary market pedestrians add a sense of scale.
+        const makePedestrian=(x,z,shirtColor,skinColor)=>{ const ped=new THREE.Group(); const torso=new THREE.Mesh(new THREE.CapsuleGeometry(0.2,0.48,3,7),mat(shirtColor)); torso.position.y=1.12; ped.add(torso); const face=new THREE.Mesh(new THREE.SphereGeometry(0.16,10,8),mat(skinColor)); face.position.y=1.72; ped.add(face); for(const lx of [-0.11,0.11]){const leg=new THREE.Mesh(new THREE.CapsuleGeometry(0.065,0.35,2,5),mat('#303a42'));leg.position.set(lx,0.42,0);ped.add(leg);} ped.position.set(x,0,z); world.add(ped); };
+        makePedestrian(-8.9,5.5,'#2d6f4e','#6e4935'); makePedestrian(8.9,7.2,'#d7a13a','#85563b'); makePedestrian(-9.3,29,'#b64b3d','#754a32');
         const bus = new THREE.Group(); driveVehicle = bus;
         makeBox(2.35, 1.5, 4.2, '#e6bd23', 0, 1.05, 0, bus);
         makeBox(2.38, 0.3, 4.22, '#208b4b', 0, 0.55, 0, bus);
