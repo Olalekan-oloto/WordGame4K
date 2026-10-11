@@ -12,7 +12,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
 // CORS configuration for GitHub Pages
-const allowedOrigin = 'https://olalekan-oloto.github.io';
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://olalekan-oloto.github.io,http://localhost:5173').split(',').map(x => x.trim()).filter(Boolean);
+const allowedOrigin = (origin, callback) => { if (!origin || allowedOrigins.includes(origin)) return callback(null, true); callback(new Error('Origin not allowed by CORS')); };
 
 app.use(cors({
 origin: allowedOrigin,
@@ -49,7 +50,7 @@ credentials: false
 });
 
 const PORT = process.env.PORT || 3001;
-const dataDir = path.join(__dirname, '..', 'data');
+const dataDir = process.env.DATA_DIR || path.join(__dirname, 'data');
 const dbPath = path.join(dataDir, 'world.json');
 
 fs.mkdirSync(dataDir, { recursive: true });
@@ -91,6 +92,7 @@ fs.writeFileSync(tmp, JSON.stringify(db, null, 2));
 fs.renameSync(tmp, dbPath);
 };
 
+const REGION = process.env.GAME_REGION || 'ALL';
 const sessions = new Map(readDB().sessions.map(s => [s.token, s.userId]));
 const onlineSockets = new Map();
 const worldPositions = new Map();
@@ -167,6 +169,8 @@ level: u.level,
 job: u.job,
 home: u.home,
 car: u.car,
+houseUpgrades: u.houseUpgrades || {},
+needs: u.needs || { hunger: 100, energy: 100, fun: 100, hygiene: 100, social: 100, bathroom: 100 },
 createdAt: u.createdAt
 });
 
@@ -189,7 +193,12 @@ next();
 }
 
 app.get('/api/health', (_, res) => {
-res.json({ ok: true, name: 'WORLD LIFE 4K API' });
+res.json({ ok: true, name: 'WORLD LIFE 4K API', region: REGION });
+});
+
+app.use('/api', (req, res, next) => {
+  if (REGION !== 'ALL' && req.body?.country && req.body.country !== REGION) return res.status(403).json({ error: `This is the ${REGION} game server.` });
+  next();
 });
 
 app.get('/api/world', (_, res) => {
@@ -227,6 +236,7 @@ if (String(password).length < 8) {
 if (!['Nigeria', 'USA'].includes(country)) {
   return res.status(400).json({ error: 'Choose Nigeria or USA.' });
 }
+if (REGION !== 'ALL' && country !== REGION) return res.status(403).json({ error: `Please register on the ${REGION} server.` });
 
 const db = readDB();
 
@@ -247,12 +257,14 @@ const user = {
   country,
   state,
   city,
-  cash: country === 'Nigeria' ? 50000 : 5000,
+  cash: 1000000,
   bank: 0,
   level: 1,
   job: 'Unemployed',
-  home: 'No home yet',
-  car: 'On foot',
+  home: 'Free Starter House',
+  car: 'Free Starter Car',
+  houseUpgrades: { bed: 1, kitchen: 1, bathroom: 1, entertainment: 0, decor: 0 },
+  needs: { hunger: 100, energy: 100, fun: 100, hygiene: 100, social: 100, bathroom: 100 },
   createdAt: new Date().toISOString()
 };
 
@@ -290,6 +302,7 @@ const user = db.users.find(
 if (!user || !await bcrypt.compare(password || '', user.passwordHash)) {
   return res.status(401).json({ error: 'Incorrect email or password.' });
 }
+if (REGION !== 'ALL' && user.country !== REGION) return res.status(403).json({ error: `This account belongs to the ${user.country} server. Switch game region and try again.` });
 
 const token = crypto.randomBytes(32).toString('hex');
 sessions.set(token, user.id);
@@ -336,7 +349,7 @@ app.get('/api/players/online', auth, (req, res) => {
 const seen = new Map();
 
 for (const info of onlineSockets.values()) {
-if (info.userId !== req.user.id) seen.set(info.userId, info.player);
+if (info.userId !== req.user.id && info.player.country === req.user.country) seen.set(info.userId, info.player);
 }
 
 res.json({ players: [...seen.values()] });
@@ -346,7 +359,7 @@ app.get('/api/messages', auth, (req, res) => {
 const db = readDB();
 
 res.json({
-messages: db.messages.slice(-100).map(m => ({
+messages: db.messages.filter(m => m.country === req.user.country).slice(-100).map(m => ({
 ...m,
 mine: m.userId === req.user.id
 }))
@@ -373,37 +386,158 @@ createdAt: new Date().toISOString()
 
 db.messages.push(message);
 writeDB(db);
-io.emit('chat:message', message);
+io.sockets.sockets.forEach(client => { if (client.data?.player?.player?.country === message.country) client.emit('chat:message', message); });
 
 res.json({ message });
 });
 
 app.post('/api/work', auth, (req, res) => {
-const jobs = {
-'Delivery Rider': 1800,
-'Shop Assistant': 2200,
-'Software Developer': 5000,
-'Taxi Driver': 2500,
-'Real Estate Agent': 3500,
-'Security Officer': 2000
+const nigeriaJobs = {
+  'Delivery Rider': 1800, 'Market Trader': 2100, 'Danfo Driver': 2400,
+  'Keke Rider': 2000, 'Jollof Chef': 2300, 'Software Developer': 5000
 };
-
-const job = String(req.body?.job || '');
-
-if (!jobs[job]) {
-return res.status(400).json({ error: 'Choose a listed job.' });
-}
-
+const usaJobs = {
+  'Delivery Driver': 170, 'Retail Associate': 160, 'Rideshare Driver': 180,
+  'EMT Assistant': 220, 'Real Estate Agent': 240, 'Software Developer': 300
+};
 const db = readDB();
 const u = db.users.find(x => x.id === req.user.id);
-
+if (!u) return res.status(404).json({ error: 'Player profile not found.' });
+const jobs = u.country === 'Nigeria' ? nigeriaJobs : usaJobs;
+const job = String(req.body?.job || '');
+if (!Object.prototype.hasOwnProperty.call(jobs, job)) {
+  return res.status(400).json({ error: `Choose a listed job for the ${u.country} region.` });
+}
 u.job = job;
 u.cash += jobs[job];
 u.level += 1;
-
 writeDB(db);
-
 res.json({ user: publicUser(u), earned: jobs[job] });
+});
+
+app.post('/api/needs', auth, (req, res) => {
+  const actions = {
+    eat: { need: 'hunger', amount: 35, cost: 500 },
+    sleep: { need: 'energy', amount: 45, cost: 0 },
+    shower: { need: 'hygiene', amount: 40, cost: 150 },
+    bathroom: { need: 'bathroom', amount: 50, cost: 0 },
+    play: { need: 'fun', amount: 30, cost: 250 },
+    socialize: { need: 'social', amount: 25, cost: 100 }
+  };
+  const action = actions[String(req.body?.action || '')];
+  if (!action) return res.status(400).json({ error: 'Choose a valid home activity.' });
+  const db = readDB();
+  const u = db.users.find(x => x.id === req.user.id);
+  if (!u) return res.status(404).json({ error: 'Player profile not found.' });
+  u.needs ||= { hunger: 100, energy: 100, fun: 100, hygiene: 100, social: 100, bathroom: 100 };
+  if (u.cash < action.cost) return res.status(400).json({ error: 'Not enough in-game money for this activity.' });
+  u.cash -= action.cost;
+  u.needs[action.need] = Math.min(100, (Number(u.needs[action.need]) || 0) + action.amount);
+  writeDB(db);
+  res.json({ user: publicUser(u), action: req.body.action });
+});
+
+app.post('/api/house/upgrade', auth, (req, res) => {
+  const upgradeCosts = {
+    bed: [{ name: 'Basic Bed', cost: 0 }, { name: 'Comfort Bed', cost: 12000 }, { name: 'Luxury Bed', cost: 35000 }],
+    kitchen: [{ name: 'Basic Kitchen', cost: 0 }, { name: 'Modern Kitchen', cost: 18000 }, { name: 'Luxury Kitchen', cost: 45000 }],
+    bathroom: [{ name: 'Basic Bathroom', cost: 0 }, { name: 'Modern Bathroom', cost: 15000 }, { name: 'Luxury Bathroom', cost: 40000 }],
+    entertainment: [{ name: 'No Entertainment', cost: 0 }, { name: 'TV & Console', cost: 20000 }, { name: 'Home Cinema', cost: 60000 }],
+    decor: [{ name: 'Simple Decor', cost: 0 }, { name: 'Designer Decor', cost: 10000 }, { name: 'Premium Decor', cost: 30000 }]
+  };
+  const key = String(req.body?.upgrade || '');
+  const level = Number(req.body?.level);
+  if (!upgradeCosts[key] || !Number.isInteger(level) || level < 1 || level > 3) return res.status(400).json({ error: 'Choose a valid home upgrade.' });
+  const db = readDB();
+  const u = db.users.find(x => x.id === req.user.id);
+  if (!u) return res.status(404).json({ error: 'Player profile not found.' });
+  u.houseUpgrades ||= { bed: 1, kitchen: 1, bathroom: 1, entertainment: 0, decor: 0 };
+  const current = Number(u.houseUpgrades[key]) || 0;
+  if (level !== current + 1) return res.status(400).json({ error: 'Upgrade one level at a time.' });
+  const cost = upgradeCosts[key][level - 1].cost;
+  if (u.cash < cost) return res.status(400).json({ error: 'Not enough in-game money for this upgrade.' });
+  u.cash -= cost;
+  u.houseUpgrades[key] = level;
+  writeDB(db);
+  res.json({ user: publicUser(u), cost, upgrade: key, level });
+});
+
+const cashPacks = {
+  Nigeria: { starter: { amount: 500000, credit: 250000, currency: 'NGN' }, plus: { amount: 1000000, credit: 600000, currency: 'NGN' }, mega: { amount: 2000000, credit: 1400000, currency: 'NGN' } },
+  USA: { starter: { amount: 500, credit: 250000, currency: 'USD' }, plus: { amount: 1000, credit: 600000, currency: 'USD' }, mega: { amount: 2000, credit: 1400000, currency: 'USD' } }
+};
+
+app.post('/api/store/checkout', auth, async (req, res) => {
+  try {
+    const packId = String(req.body?.packId || '');
+    const pack = cashPacks[req.user.country]?.[packId];
+    if (!pack) return res.status(400).json({ error: 'Unknown cash pack.' });
+    const db = readDB();
+    const user = db.users.find(u => u.id === req.user.id);
+    if (!user) return res.status(404).json({ error: 'Player account not found.' });
+    const reference = `wl4k_${crypto.randomUUID().replaceAll('-', '')}`;
+    const frontendUrl = (process.env.FRONTEND_URL || 'https://olalekan-oloto.github.io/WordGame4K').replace(/\/+$/, '');
+    let checkoutUrl;
+    if (user.country === 'Nigeria') {
+      if (!process.env.PAYSTACK_SECRET_KEY) return res.status(503).json({ error: 'Nigeria payments are not configured yet. Add PAYSTACK_SECRET_KEY to the Nigeria server.' });
+      const response = await fetch('https://api.paystack.co/transaction/initialize', { method: 'POST', headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user.email, amount: pack.amount, currency: 'NGN', reference, callback_url: `${frontendUrl}/?payment=success`, metadata: { userId: user.id, packId, region: user.country } }) });
+      const data = await response.json();
+      if (!response.ok || !data.status || !data.data?.authorization_url) return res.status(502).json({ error: data.message || 'Paystack could not start checkout.' });
+      checkoutUrl = data.data.authorization_url;
+    } else {
+      if (!process.env.STRIPE_SECRET_KEY) return res.status(503).json({ error: 'USA payments are not configured yet. Add STRIPE_SECRET_KEY to the USA server.' });
+      const form = new URLSearchParams({ mode: 'payment', success_url: `${frontendUrl}/?payment=success&session_id={CHECKOUT_SESSION_ID}`, cancel_url: `${frontendUrl}/?payment=cancelled`, customer_email: user.email, 'line_items[0][price_data][currency]': 'usd', 'line_items[0][price_data][unit_amount]': String(pack.amount), 'line_items[0][price_data][product_data][name]': `WORLD LIFE 4K ${packId} cash pack`, 'metadata[userId]': user.id, 'metadata[packId]': packId, 'metadata[region]': user.country, client_reference_id: reference });
+      const response = await fetch('https://api.stripe.com/v1/checkout/sessions', { method: 'POST', headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body: form });
+      const data = await response.json();
+      if (!response.ok || !data.url) return res.status(502).json({ error: data.error?.message || 'Stripe could not start checkout.' });
+      checkoutUrl = data.url;
+    }
+    db.transactions.push({ id: reference, userId: user.id, action: 'cash-pack-pending', packId, amount: pack.amount, currency: pack.currency, credit: pack.credit, provider: user.country === 'Nigeria' ? 'paystack' : 'stripe', status: 'pending', at: new Date().toISOString() });
+    writeDB(db);
+    res.json({ checkoutUrl, reference });
+  } catch (error) {
+    console.error('Checkout initialization error:', error);
+    res.status(500).json({ error: 'Could not start checkout. No game cash was added.' });
+  }
+});
+
+app.post('/api/store/confirm', auth, async (req, res) => {
+  try {
+    const reference = String(req.body?.reference || '');
+    const sessionId = String(req.body?.sessionId || '');
+    const db = readDB();
+    let pending;
+    let verified = false;
+    let metadata = {};
+    if (req.user.country === 'Nigeria' && reference && process.env.PAYSTACK_SECRET_KEY) {
+      pending = db.transactions.find(t => t.id === reference && t.userId === req.user.id && t.action === 'cash-pack-pending');
+      if (!pending) return res.status(404).json({ error: 'Payment reference not found.' });
+      const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` } });
+      const data = await response.json();
+      verified = Boolean(response.ok && data.status && data.data?.status === 'success' && Number(data.data.amount) === pending.amount && data.data.currency === 'NGN' && data.data.metadata?.userId === req.user.id && data.data.metadata?.packId === pending.packId);
+    } else if (req.user.country === 'USA' && sessionId && process.env.STRIPE_SECRET_KEY) {
+      const response = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, { headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}` } });
+      const data = await response.json();
+      if (!response.ok) return res.status(502).json({ error: data.error?.message || 'Could not verify Stripe payment.' });
+      metadata = data.metadata || {};
+      pending = db.transactions.find(t => t.userId === req.user.id && t.action === 'cash-pack-pending' && t.id === data.client_reference_id);
+      verified = Boolean(pending && data.payment_status === 'paid' && data.currency === 'usd' && Number(data.amount_total) === pending.amount && metadata.userId === req.user.id && metadata.packId === pending.packId && metadata.region === 'USA');
+    }
+    if (!pending) return res.status(404).json({ error: 'Pending payment not found. Please contact support if you were charged.' });
+    if (pending.status === 'paid') return res.json({ user: publicUser(db.users.find(u => u.id === req.user.id)), credited: pending.credit, alreadyCredited: true });
+    if (!verified) return res.status(402).json({ error: 'Payment is not verified as successful. No game cash was credited.' });
+    const user = db.users.find(u => u.id === req.user.id);
+    if (!user) return res.status(404).json({ error: 'Player account not found.' });
+    user.cash += pending.credit;
+    pending.status = 'paid';
+    pending.paidAt = new Date().toISOString();
+    pending.providerReference = reference || sessionId;
+    writeDB(db);
+    res.json({ user: publicUser(user), credited: pending.credit });
+  } catch (error) {
+    console.error('Payment verification error:', error);
+    res.status(500).json({ error: 'Payment verification failed. If you were charged, contact support with your receipt.' });
+  }
 });
 
 app.post('/api/bank', auth, (req, res) => {
@@ -508,7 +642,7 @@ error: 'Real-money travel is disabled until a verified payment provider, refund 
 
 app.get('/api/feed', auth, (req, res) => {
 const db = readDB();
-res.json({ posts: db.posts.slice(-50).reverse() });
+res.json({ posts: db.posts.filter(p => p.country === req.user.country).slice(-50).reverse() });
 });
 
 app.post('/api/feed', auth, (req, res) => {
@@ -617,10 +751,10 @@ socket.emit('world:pong', Date.now());
 socket.on('disconnect', () => {
 onlineSockets.delete(socket.id);
 
-io.emit('world:presence', {
+io.to(socket.data.player.player.country).emit('world:presence', {
   players: [
     ...new Map(
-      [...onlineSockets.values()].map(x => [x.userId, x.player])
+      [...onlineSockets.values()].filter(x => x.player.country === socket.data.player.player.country).map(x => [x.userId, x.player])
     ).values()
   ]
 });

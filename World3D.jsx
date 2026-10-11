@@ -218,7 +218,7 @@ export default function World3D({ username = 'Player', city = 'Lagos', country =
           makeBox(0.5, 0.7, 0.08, '#4b8190', x - 0.55, 1.05, z + 0.94);
           makeBox(0.5, 0.7, 0.08, '#4b8190', x + 0.55, 1.05, z + 0.94);
         }
-        makeShopSign('EKO MARKET',-4.7,2.22,20.0,'#176746',2.5);
+        makeShopSign(city === 'Lagos' ? 'EKO MARKET' : `${city.toUpperCase()} MARKET`,-4.7,2.22,20.0,'#176746',2.5);
         makeShopSign('POS • AIRTIME',-1.5,2.22,22.2,'#b64a2f',2.5);
         makeShopSign('MAMA PUT',1.7,2.22,24.4,'#a66a18',2.5);
         // More roadside kiosks with painted awnings along the market street.
@@ -273,6 +273,44 @@ export default function World3D({ username = 'Player', city = 'Lagos', country =
         }
         bus.position.set(3.8, 0, -3); bus.rotation.y = Math.PI / 2; world.add(bus);
       } else {
+        // USA district: traffic signals, parking bays, street signs, mailboxes and storefronts.
+        // These are lightweight procedural props so the region remains self-contained in the browser.
+        const signCanvas = document.createElement('canvas'); signCanvas.width = 512; signCanvas.height = 160;
+        const signCtx = signCanvas.getContext('2d');
+        signCtx.fillStyle = '#176b48'; signCtx.fillRect(0,0,512,160);
+        signCtx.strokeStyle = '#f4f0d7'; signCtx.lineWidth = 10; signCtx.strokeRect(8,8,496,144);
+        signCtx.fillStyle = '#ffffff'; signCtx.font = 'bold 48px Arial'; signCtx.textAlign = 'center'; signCtx.textBaseline = 'middle';
+        const streetLabel = city === 'Los Angeles' ? 'SUNSET BLVD' : city === 'Miami' ? 'OCEAN DRIVE' : city === 'Chicago' ? 'LAKE STREET' : city === 'Houston' ? 'MAIN STREET' : city === 'New York City' ? 'BROADWAY' : 'MAIN STREET';
+        signCtx.fillText(streetLabel,256,80,470);
+        const streetSign = new THREE.Mesh(new THREE.PlaneGeometry(4.1,1.28),new THREE.MeshStandardMaterial({map:new THREE.CanvasTexture(signCanvas),roughness:0.75}));
+        streetSign.position.set(5.7,4.8,-8); streetSign.rotation.y=-0.12; world.add(streetSign);
+        const traffic = new THREE.Group();
+        makeBox(0.16,5.1,0.16,'#3e484e',0,2.55,0,traffic);
+        makeBox(0.78,1.85,0.62,'#252b30',0.12,4.15,0,traffic);
+        for (const [y,c] of [[4.72,'#e34c42'],[4.15,'#e7b83c'],[3.58,'#50b875']]) {
+          const lamp=new THREE.Mesh(new THREE.CircleGeometry(0.17,12),mat(c,0.3,{emissive:c,emissiveIntensity:0.18}));
+          lamp.position.set(0.12,y,0.32); traffic.add(lamp);
+        }
+        traffic.position.set(7.2,0,10); world.add(traffic);
+        // Painted parking bays and a curb-side mailbox distinguish the American block.
+        for (let i=0;i<3;i++) {
+          const bay=new THREE.Mesh(new THREE.PlaneGeometry(2.3,5.2),mat('#e8e5d9'));
+          bay.rotation.x=-Math.PI/2; bay.position.set(11.3,0.018,-20+i*6); world.add(bay);
+          const fill=new THREE.Mesh(new THREE.PlaneGeometry(2.05,4.95),mat('#6f777a'));
+          fill.rotation.x=-Math.PI/2; fill.position.set(11.3,0.02,-20+i*6); world.add(fill);
+        }
+        const mailbox=new THREE.Group();
+        makeBox(0.9,0.62,0.5,'#2b5a9b',0,1.1,0,mailbox);
+        makeBox(0.08,0.9,0.08,'#4d5559',0,0.48,0,mailbox);
+        makeBox(0.42,0.06,0.03,'#c9d4df',0,1.18,0.27,mailbox);
+        mailbox.position.set(10.7,0,7); world.add(mailbox);
+        // A bus-stop shelter and glass panels add an everyday city detail.
+        const stop=new THREE.Group();
+        makeBox(2.8,0.12,1.35,'#39484f',0,2.25,0,stop);
+        for(const x of [-1.3,1.3]) makeBox(0.08,2.15,0.08,'#3f4b50',x,1.08,0,stop);
+        makeBox(2.55,1.35,0.045,'#79a8b8',0,1.1,0,stop);
+        makeBox(2.25,0.12,0.42,'#343f44',0,0.55,0.35,stop);
+        stop.position.set(-10.7,0,-17); world.add(stop);
         // US flag stripes and blue canton, a yellow cab, and a small red hydrant.
         for (let i = 0; i < 7; i++) makeBox(0.08, 0.16, 2.1, i % 2 ? '#ffffff' : '#c83c45', -4.6, 4.7 - i * 0.23, -5);
         makeBox(0.08, 0.65, 0.78, '#254a87', -4.55, 4.55, -5.65);

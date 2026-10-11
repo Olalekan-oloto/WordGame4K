@@ -1,0 +1,49 @@
+services:
+  - type: web
+    name: world-life-4k-nigeria
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    disk:
+      name: world-life-4k-ng-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: GAME_REGION
+        value: Nigeria
+      - key: DATA_DIR
+        value: /opt/render/project/src/data
+      - key: ALLOWED_ORIGINS
+        value: https://olalekan-oloto.github.io,http://localhost:5173
+      - key: FRONTEND_URL
+        value: https://olalekan-oloto.github.io/WordGame4K
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+  - type: web
+    name: world-life-4k-usa
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    disk:
+      name: world-life-4k-us-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: GAME_REGION
+        value: USA
+      - key: DATA_DIR
+        value: /opt/render/project/src/data
+      - key: ALLOWED_ORIGINS
+        value: https://olalekan-oloto.github.io,http://localhost:5173
+      - key: FRONTEND_URL
+        value: https://olalekan-oloto.github.io/WordGame4K
+      - key: STRIPE_SECRET_KEY
+        sync: false
